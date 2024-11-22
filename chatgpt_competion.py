@@ -1,10 +1,9 @@
 # chatgpt_competion.py
 # Description: This file contains the code for the competition of the ChatGPT model.
-
-from dotenv import load_dotenv
-load_dotenv()
 import subprocess
 from openai import OpenAI
+from dotenv import load_dotenv
+load_dotenv()
 client = OpenAI()
 prompt = "Create a python program that checks if a number is even and divided by 9. Do not write any explanations, just show me the code itself. Don't add examples that need interact from user, and print your example's output propely."
 unit_tests_prompt = """Also please include running unit tests with asserts that check the logic of the
