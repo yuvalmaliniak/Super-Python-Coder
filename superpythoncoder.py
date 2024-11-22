@@ -1,4 +1,4 @@
-import random, subprocess
+import random, subprocess, re
 from openai import OpenAI
 from dotenv import load_dotenv
 load_dotenv()
@@ -34,14 +34,18 @@ else:
     program = user_program_choice
 #print(program)
 prompt = f"Create the foolowing python program:{program} .Do not write any explanations, just show me the code itself. Don't add examples that need interact from user, and print your example's output propely."
-unit_tests_prompt = """Also please include running unit tests with asserts that check the logic of the
+unit_tests_prompt = """Also please include running unit tests (USE asserts) that check the logic of the
 program. Make sure to also check interesting edge cases. There should be at least
-10 different unit tests. print how many of the test results passed, and if all tests passed write "All tests passed"."""
+10 different unit tests. Use for loops to number the assertions, so when a failure occur the user can see which test failed."""
+unit_tests_expanded = """If all tests passed write "All tests passed".
+If some tests didn't pass, raise an AssertionError and print "AssertionError" and the error message is Test X failed where X is number of test.
+Make sure to be WRONG in the code to see how the code handles the AssertionError."""
 completion = client.chat.completions.create(
     model="gpt-4o-mini",
     messages=[
         {"role": "system", "content": "You are a helpful assistant for code completion. Write only code."},
         {"role": "user", "content": prompt+unit_tests_prompt},
+        {"role": "user", "content": unit_tests_expanded}
     ]
 )
 code_content = completion.choices[0].message.content
@@ -50,10 +54,46 @@ file_path = "generatedprogram.py"
 with open(file_path, "w") as file:
     file.write(clean_code)
 #print("Running the code...")
-result = subprocess.run(["python", "generatedcode.py"], capture_output=True)
-#print(f"Output: {result.stdout.decode()}")
-if "All tests passed" in result.stdout.decode():
+result = subprocess.run(["python", "generatedprogram.py"], capture_output=True)
+if result.returncode == 0 and "All tests passed" in result.stdout.decode():  # Check if the script ran successfully (returncode 0 means success)
     print("Code creation completed successfully !")
     subprocess.call(["open", file_path])
-else:
-    print("Code creation failed. Please try again.")
+else:  # Handle errors
+    pattern = r"Test (\d+)(/\d+)? failed"
+    #print(f"result.stderr: {result.stderr.decode()}")
+    error_msg = re.search(pattern, result.stdout.decode())
+    if not error_msg:
+        error_msg = re.search(pattern, result.stderr.decode())
+    print(f"Error running generated code! Error: {error_msg.group(0)}. Trying again.")
+    for i in range(1,6):
+        print(f"Attempt {i} to fix the code")
+        fix_prompt = f"""Fix The code below. It has an error: '{error_msg}'. Please fix it. 
+        The code should be this program: {program}. Make sure to not write any explanations, just show me the code itself and
+        keep the testings if they are fine. \n\n{clean_code}"""
+        fix_completion = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant for debugging code."},
+                    {"role": "user", "content": fix_prompt}
+                ]
+            )
+        fix_code_content = fix_completion.choices[0].message.content
+        new_clean_code = fix_code_content.strip("```").replace("python", "").strip()
+        with open(file_path, "w") as file:
+            file.write(new_clean_code)
+        result = subprocess.run(["python", "generatedprogram.py"], capture_output=True)
+        #print(f"stdout of attempt {i}: {result.stdout.decode()}")  # To inspect the full output
+        #print(f"stderr of attempt {i}: {result.stderr.decode()}")  # To inspect the full output
+        if result.returncode == 0 and "All tests passed" in result.stdout.decode():  # Check if the script ran successfully (returncode 0 means success)
+            print("Code creation completed successfully !")
+            subprocess.call(["open", file_path])
+            break
+        else:
+            error_msg = re.search(pattern, result.stdout.decode())
+            if not error_msg:
+                error_msg = re.search(pattern, result.stderr.decode())
+            print(f"Error running generated code! Error: {error_msg.group(0)}. Trying again.")
+        if (i==5):
+            print("Code generation FAILED.")
+            break
+        
