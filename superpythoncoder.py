@@ -1,5 +1,5 @@
 # superpythoncoder.py
-import random, subprocess, re
+import random, subprocess, re, time
 from openai import OpenAI
 from dotenv import load_dotenv
 load_dotenv()
@@ -25,6 +25,7 @@ CAB "''',
 "A program that checks if euler cycle exists in a given graph",
 "A program that checks if a given number is a power of 2"
 ]
+file_path = "generatedprogram.py"
 
 def extract_errors_for_user_using_gpt(stderr):
     completion = client.chat.completions.create(
@@ -44,7 +45,19 @@ def extract_errors_for_gpt(stderr):
         return error_msg.group(0)
     else:
         return None
+    
+def generate_code(messages):
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages
+    )
+    response_content = completion.choices[0].message.content
+    cleaned_code = response_content.replace("```python", "").replace("```", "").strip()
+    return cleaned_code
 
+def file_write(clean_code):
+    with open(file_path, "w") as file:
+        file.write(clean_code)
 # Start the program
 print('''I’m Super Python Coder. Tell me, which program would you like me to code for
 you? If you don't have an idea,just press enter and I will choose a random
@@ -53,6 +66,7 @@ program to code''')
 user_program_choice = input()
 if not user_program_choice:
     program = random.choice(PROGRAMS_LIST)
+    print("Program chosen is:", program)
 else:
     program = user_program_choice
 
@@ -66,23 +80,18 @@ conversation_history = [
         {"role": "system", "content": "You are a helpful assistant for code completion. Write only code."},
         {"role": "user", "content": prompt+unit_tests_prompt},
         {"role": "user", "content": unit_tests_expanded}]
-completion = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=conversation_history
-)
 
-code_content = completion.choices[0].message.content
-clean_code = code_content.strip("```").replace("python", "").strip()
-file_path = "generatedprogram.py"
-with open(file_path, "w") as file:
-    file.write(clean_code)
-
+clean_code = generate_code(conversation_history)
+file_write(clean_code)
 # Run code up to 5 times if it fails
 success = False
 attempt = 1
 while attempt <= 5 and not success:
     print(f"Attempt {attempt} to run the code")
+    start_time = time.time()
     result = subprocess.run(["python", "generatedprogram.py"], capture_output=True)
+    end_time = time.time()
+    total_time = (end_time - start_time) * 1000
     if result.returncode == 0 and "All tests passed" in result.stdout.decode():  # Check if the script ran successfully (returncode 0 means success)
         print("Code creation completed successfully !")
         success = True
@@ -104,15 +113,27 @@ while attempt <= 5 and not success:
                                         f"Error summary is {errors_for_printing}"
                                         f"Please fix the issues and regenerate the program: {program}. Remember to include only the code."}
         )
-        fix_completion = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=conversation_history
-            )
-        fix_code_content = fix_completion.choices[0].message.content
-        clean_code = fix_code_content.strip("```").replace("python", "").strip()
+        clean_code = generate_code(conversation_history)
         attempt += 1
-        with open(file_path, "w") as file:
-            file.write(clean_code)
+        file_write(clean_code)
     if (attempt > 5):
         print("Code generation FAILED.")
-        
+if (success):
+    #Optimizing runtime
+    print("Optimizing code run time")
+    conversation_history.append(
+        {"role": "assistant", "content": f"The previous code that worked good was:\n```python\n{clean_code}\n```" 
+        }                                
+    )
+    conversation_history.append(
+        {"role": "user", "content": f"Please optimize the code for runtime: {program}. Do not change the unit tests, just improve the code runtime. Remember to include only the code."}
+    )
+    clean_code = generate_code(conversation_history)
+    file_write(clean_code)
+    start_time = time.time()
+    result = subprocess.run(["python", "generatedprogram.py"], capture_output=True)
+    end_time = time.time()
+    new_total_time = (end_time - start_time) * 1000
+    if (new_total_time < total_time):
+        print(f"Code running time optimized! It now runs in {new_total_time} milliseconds, while before it was {total_time} milliseconds")
+        subprocess.call(["open", file_path])
