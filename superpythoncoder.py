@@ -95,7 +95,7 @@ def lint_check():
     print("There are still lint errors/warnings after 3 attempts.")
     return False
 
-def run_generated_code(clean_code):
+def run_and_optimize_generated_code(clean_code):
     success = False
     runtime_success = False
     attempt = 1
@@ -141,7 +141,8 @@ def run_generated_code(clean_code):
             attempt += 1
             file_write(clean_code)
 
-# Start the program
+# Program starts here!
+
 print('''I’m Super Python Coder. Tell me, which program would you like me to code for
 you? If you don't have an idea,just press enter and I will choose a random
 program to code''')
@@ -164,10 +165,7 @@ conversation_history = [
         {"role": "user", "content": prompt+unit_tests_prompt},
         {"role": "user", "content": unit_tests_expanded}]
 
-clean_code = generate_code(conversation_history)
-file_write(clean_code)
-run_generated_code(clean_code)
-
-
-
+clean_code = generate_code(conversation_history) # 1st generation
+file_write(clean_code) 
+run_and_optimize_generated_code(clean_code) # Run the code and optimize it's runtime
 lint_check()
